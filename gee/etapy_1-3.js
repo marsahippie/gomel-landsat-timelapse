@@ -13,8 +13,8 @@
 
 // Пути к загруженным файлам. Скопируйте их из вкладки Assets
 // (кликните на файл -> значок копирования рядом с ID).
-var RAYON_PATH = 'projects/ВАШ-ПРОЕКТ/assets/gomel_rayon';  // <<< ЗАМЕНИТЕ (граница района)
-var RAMKA_PATH = 'projects/ВАШ-ПРОЕКТ/assets/gomel_ramka';  // <<< ЗАМЕНИТЕ (прямоугольная рамка)
+var RAYON_PATH = 'projects/gomel-timelapse/assets/gomel_rayon';
+var RAMKA_PATH = 'projects/gomel-timelapse/assets/region-ramka';
 
 // Период исследования
 var START_YEAR = 1996;
@@ -50,7 +50,7 @@ Map.addLayer(rayon.style({color: 'FF0000', fillColor: '00000000', width: 2}), {}
 // Площади для проверки (в км²). Сверьте с реальными цифрами!
 print('Площадь района, км²:', rayon.geometry().area(1).divide(1e6));
 print('Площадь рамки, км²:', aoi.area(1).divide(1e6));
-
+print('Границы района (долгота, широта):', rayon.geometry().bounds());
 
 // =====================================================================
 // ЭТАП 2. РАЗВЕДКА ДАННЫХ: сколько снимков есть на каждый год
@@ -173,3 +173,49 @@ TEST_YEARS.forEach(function (y, i) {
   Map.addLayer(annualComposite(y), VIS_RGB, 'RGB ' + y, i === 0);
   print('Сцен в композите ' + y + ':', seasonCollection(y).size());
 });
+// =====================================================================
+// ЭТАПЫ 4–5. ГОДОВЫЕ КОМПОЗИТЫ + ИНДЕКСЫ + ПРОСМОТРЩИК ПО ГОДАМ
+//
+// КАК ПОЛЬЗОВАТЬСЯ: вставьте этот код В КОНЕЦ вашего рабочего скрипта
+// (после этапа 3, ничего не удаляя) и нажмите Run.
+// Код использует то, что уже создано в этапах 1–3:
+// aoi, rayon, ramka, lt5, le7, lc8, lc9, prepTM, prepOLI, START_YEAR и т.д.
+// =====================================================================
+
+
+// ---------------------------------------------------------------------
+// НАСТРОЙКА: особые сезоны для «слабых» лет
+// ---------------------------------------------------------------------
+// По умолчанию все годы берутся за один и тот же сезон (июнь–сентябрь).
+// Если какой-то год получится плохим (дыры, полосы), для него можно
+// расширить окно. Формат: {год: [первый месяц, месяц ПОСЛЕ последнего]}.
+// Пример для 2012 года (май–октябрь):  {2012: [5, 11]}
+// Пока оставляем пустым и сначала смотрим на результат.
+var SPECIAL_SEASONS = {};
+
+function seasonMonths(year) {
+  if (SPECIAL_SEASONS[year]) return SPECIAL_SEASONS[year];
+  return [SEASON_START_MONTH, SEASON_END_MONTH];
+}
+
+
+// ---------------------------------------------------------------------
+// ЭТАП 5 (функция). РАСЧЁТ ИНДЕКСОВ
+// ---------------------------------------------------------------------
+// normalizedDifference(['A','B']) считает (A − B) / (A + B)
+function addIndices(img) {
+  // Растительность / лес
+  var ndvi = img.normalizedDifference(['NIR', 'Red']).rename('NDVI');
+  var nbr = img.normalizedDifference(['NIR', 'SWIR2']).rename('NBR');    // вырубки, гари
+  var ndmi = img.normalizedDifference(['NIR', 'SWIR1']).rename('NDMI');  // влажность растительности
+
+  // Застройка
+  var ndbi = img.normalizedDifference(['SWIR1', 'NIR']).rename('NDBI');
+  var bui = ndbi.subtract(ndvi).rename('BUI');  // индекс застройки: NDBI минус NDVI
+
+  // Вода
+  var mndwi = img.normalizedDifference(['Green', 'SWIR1']).rename('MNDWI');  // основной
+  var ndwi = img.normalizedDifference(['Green', 'NIR']).rename('NDWI');      // классический
+
+  return img.addBands([ndvi, nbr, ndmi, ndbi, bui, mndwi, ndwi]);
+}
